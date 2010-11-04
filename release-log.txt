@@ -6,7 +6,7 @@ GH-0066 Add Uniqueness functionality to queue
 GH-0141 Oozie uses excessive memory when doing purging
 
 -- Oozie 2.2.3 release
-
+GH-0152 classpath of actions contains all JARs twice
 GH-0055 Oozie should not materialize a coordinator job right after its submission if the job will only run in far future
 GH-0046 Add support the coordiator job submitted to run in far future
 
