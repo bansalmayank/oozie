@@ -108,9 +108,14 @@ public class XOozieClient extends OozieClient {
         if (libPath == null) {
             throw new RuntimeException("libpath is not specified in conf");
         }
-        if (!libPath.startsWith("hdfs://")) {
-            String newLibPath = NN + libPath;
-            conf.setProperty(XOozieClient.LIBPATH, newLibPath);
+        if(!libPath.contains(":/")){
+        	String newLibPath;
+        	if(libPath.startsWith("/") && NN.endsWith("/")){
+        		newLibPath = NN + libPath.substring(1);
+        	}else{
+        		newLibPath = NN + libPath;
+        	}
+        	conf.setProperty(XOozieClient.LIBPATH, newLibPath);
         }
     }
 
