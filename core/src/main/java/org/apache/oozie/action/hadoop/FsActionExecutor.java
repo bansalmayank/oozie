@@ -29,6 +29,7 @@ import org.apache.oozie.client.WorkflowAction;
 import org.apache.oozie.service.HadoopAccessorException;
 import org.apache.oozie.service.HadoopAccessorService;
 import org.apache.oozie.service.Services;
+import org.apache.oozie.util.XLog;
 import org.apache.oozie.util.XmlUtils;
 import org.jdom.Element;
 
@@ -36,7 +37,7 @@ import org.jdom.Element;
  * File system action executor. <p/> This executes the file system mkdir, move and delete commands
  */
 public class FsActionExecutor extends ActionExecutor {
-
+    private static final String SUPPORTED_FILESYSTEMS = "oozie.filesystems.supported";
     public FsActionExecutor() {
         super("fs");
     }
@@ -54,7 +55,7 @@ public class FsActionExecutor extends ActionExecutor {
                                                   "Missing scheme in path [{0}]", path);
             }
             else {
-                if (!scheme.equals("hdfs")) {
+                if (!checkSupportedFilesystem(scheme)) {
                     throw new ActionExecutorException(ActionExecutorException.ErrorType.ERROR, "FS002",
                                                       "Scheme [{0}] not support in path [{1}]", scheme, path);
                 }
@@ -68,6 +69,34 @@ public class FsActionExecutor extends ActionExecutor {
         }
     }
 
+    boolean checkSupportedFilesystem(String filesystem){
+        boolean isSupported = false;
+        Configuration conf = Services.get().getConf();
+        if (conf.get(SUPPORTED_FILESYSTEMS, "").trim().length() > 0) {
+            for (String fs : conf.getStrings(SUPPORTED_FILESYSTEMS)) {
+                fs = Trim(fs);
+                XLog.getLog(getClass()).debug("Checking for supoorted Filesystem" + fs);
+                if(fs.equalsIgnoreCase(filesystem)){
+                    isSupported = true;
+                }
+            }
+        }
+        return isSupported;
+    }
+    
+    /**
+     * @param str
+     * @return
+     */
+    String Trim(String str) {
+        if (str != null) {
+            str = str.replaceAll("\\n", "");
+            str = str.replaceAll("\\t", "");
+            str = str.trim();
+        }
+        return str;
+    }
+    
     @SuppressWarnings("unchecked")
     void doOperations(Context context, Element element) throws ActionExecutorException {
         try {

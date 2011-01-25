@@ -1139,4 +1139,12 @@
         </description>
     </property>
 
+	<property>
+        <name>oozie.filesystems.supported</name>
+        <value>hdfs</value>
+        <description>
+            Whitelisted job tracker for Oozie service.
+        </description>
+    </property>
+    
 </configuration>

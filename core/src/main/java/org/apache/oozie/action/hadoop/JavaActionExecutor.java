@@ -144,6 +144,7 @@ public class JavaActionExecutor extends ActionExecutor {
     }
 
     Configuration createBaseHadoopConf(Context context, Element actionXml) {
+        //Configuration conf = new Configuration();
         Configuration conf = new XConfiguration();
         conf.set(HADOOP_USER, context.getProtoActionConf().get(WorkflowAppService.HADOOP_USER));
         conf.set(HADOOP_UGI, context.getProtoActionConf().get(WorkflowAppService.HADOOP_UGI));
@@ -251,7 +252,8 @@ public class JavaActionExecutor extends ActionExecutor {
             else {
                 path = new Path(appPath, filePath);
             }
-            URI uri = new URI(path.toUri().getPath());
+            log.info("addToCache: path.toUri() :"+path.toUri().toString());
+            URI uri = new URI(path.toString());
             if (archive) {
                 DistributedCache.addCacheArchive(uri, conf);
             }
@@ -268,8 +270,9 @@ public class JavaActionExecutor extends ActionExecutor {
                 }
                 else if (fileName.endsWith(".jar")){  // .jar files
                     if (!fileName.contains("#")) {
+                        uri = new URI(uri.getPath()); /// have to be changed TODO mayank
                         path = new Path(uri.toString());
-
+                            
                         String user = conf.get("user.name");
                         String group = conf.get("group.name");
                         Services.get().get(HadoopAccessorService.class).addFileToClassPath(user, group, path, conf);
@@ -280,13 +283,22 @@ public class JavaActionExecutor extends ActionExecutor {
                 }
                 else { // regular files
                     if (!fileName.contains("#")) {
-                        uri = new Path(path.toString() + "#" + fileName).toUri();
-                        uri = new URI(uri.getPath());
+                        //uri = new Path(path.toString() + "#" + fileName).toUri();
+                        //uri = new URI(uri.getPath());
+                        String pth = path.toString() + "#" + fileName;
+                        uri = new URI(pth);
                     }
-                    DistributedCache.addCacheFile(uri, conf);
                 }
+                log.info("addToCache For File: URI: "+ uri.toString());
+                DistributedCache.addCacheFile(uri, conf);
             }
             DistributedCache.createSymlink(conf);
+            System.out.println("URI "+uri.toString());
+            System.out.println(DistributedCache.getFileClassPaths(conf).length);
+            for(int i = 0;i<DistributedCache.getFileClassPaths(conf).length;i++){
+                System.out.println(DistributedCache.getFileClassPaths(conf)[i]);
+            }
+            
             return conf;
         }
         catch (Exception ex) {

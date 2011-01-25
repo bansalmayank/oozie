@@ -588,7 +588,7 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
 
 
         assertTrue(DistributedCache.getSymlink(jobConf));
-
+        System.out.println(DistributedCache.getFileClassPaths(jobConf));
         // 1 launcher JAR, 1 wf lib JAR, 2 <file> JARs
         assertEquals(4, DistributedCache.getFileClassPaths(jobConf).length);
 
