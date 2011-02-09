@@ -42,6 +42,8 @@ import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.security.token.Token;
+import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.util.DiskChecker;
 import org.apache.oozie.WorkflowJobBean;
 import org.apache.oozie.action.ActionExecutor;
@@ -61,8 +63,6 @@ import org.apache.oozie.util.XmlUtils;
 import org.jdom.Element;
 import org.jdom.JDOMException;
 import org.jdom.Namespace;
-import org.apache.hadoop.security.token.Token;
-import org.apache.hadoop.security.token.TokenIdentifier;
 
 public class JavaActionExecutor extends ActionExecutor {
 
@@ -80,7 +80,7 @@ public class JavaActionExecutor extends ActionExecutor {
     private static final String FAILED = "FAILED";
     private static final String FAILED_KILLED = "FAILED/KILLED";
     private static final String RUNNING = "RUNNING";
-    private XLog log = XLog.getLog(getClass());
+    private final XLog log = XLog.getLog(getClass());
 
     static {
         DISALLOWED_PROPERTIES.add(HADOOP_USER);
@@ -149,8 +149,8 @@ public class JavaActionExecutor extends ActionExecutor {
     }
 
     Configuration createBaseHadoopConf(Context context, Element actionXml) {
-        //Configuration conf = new Configuration();
-        Configuration conf = new XConfiguration();
+        Configuration conf = new Configuration();
+        // Configuration conf = new XConfiguration();
         conf.set(HADOOP_USER, context.getProtoActionConf().get(WorkflowAppService.HADOOP_USER));
         conf.set(HADOOP_UGI, context.getProtoActionConf().get(WorkflowAppService.HADOOP_UGI));
         if (context.getProtoActionConf().get(WorkflowAppService.HADOOP_JT_KERBEROS_NAME) != null) {
@@ -258,7 +258,7 @@ public class JavaActionExecutor extends ActionExecutor {
             else {
                 path = new Path(appPath, filePath);
             }
-            log.info("addToCache: path.toUri() :"+path.toUri().toString());
+            log.info("addToCache: path.toUri() :" + path.toUri().toString());
             URI uri = new URI(path.toString());
             if (archive) {
                 DistributedCache.addCacheArchive(uri, conf);
@@ -276,9 +276,9 @@ public class JavaActionExecutor extends ActionExecutor {
                 }
                 else if (fileName.endsWith(".jar")) { // .jar files
                     if (!fileName.contains("#")) {
-                        uri = new URI(uri.getPath()); /// have to be changed TODO mayank
+                        uri = new URI(uri.getPath()); // / have to be changed TODO mayank
                         path = new Path(uri.toString());
-                            
+
                         String user = conf.get("user.name");
                         String group = conf.get("group.name");
                         Services.get().get(HadoopAccessorService.class).addFileToClassPath(user, group, path, conf);
@@ -289,22 +289,16 @@ public class JavaActionExecutor extends ActionExecutor {
                 }
                 else { // regular files
                     if (!fileName.contains("#")) {
-                        //uri = new Path(path.toString() + "#" + fileName).toUri();
-                        //uri = new URI(uri.getPath());
+                        // uri = new Path(path.toString() + "#" + fileName).toUri();
+                        // uri = new URI(uri.getPath());
                         String pth = path.toString() + "#" + fileName;
                         uri = new URI(pth);
                     }
                 }
-                log.info("addToCache For File: URI: "+ uri.toString());
+                log.info("addToCache For File: URI: " + uri.toString());
                 DistributedCache.addCacheFile(uri, conf);
             }
             DistributedCache.createSymlink(conf);
-            System.out.println("URI "+uri.toString());
-            System.out.println(DistributedCache.getFileClassPaths(conf).length);
-            for(int i = 0;i<DistributedCache.getFileClassPaths(conf).length;i++){
-                System.out.println(DistributedCache.getFileClassPaths(conf)[i]);
-            }
-            
             return conf;
         }
         catch (Exception ex) {
@@ -605,13 +599,15 @@ public class JavaActionExecutor extends ActionExecutor {
                         log.debug("Credential Properties set for action : " + action.getId());
                         for (String property : prop.getProperties().keySet()) {
                             actionConf.set(property, prop.getProperties().get(property));
-                            log.debug("property : '" + property + "', value : '" + prop.getProperties().get(property) + "'");
+                            log.debug("property : '" + property + "', value : '" + prop.getProperties().get(property)
+                                    + "'");
                         }
                     }
                 }
             }
             else {
-                log.warn("No credential properties found for action : " + action.getId() + ", cred : " + action.getCred());
+                log.warn("No credential properties found for action : " + action.getId() + ", cred : "
+                        + action.getCred());
             }
         }
         else {
@@ -665,15 +661,13 @@ public class JavaActionExecutor extends ActionExecutor {
     }
 
     @SuppressWarnings("unchecked")
-    protected CredentialsProperties getCredProperties(Context context, String credName)
-            throws Exception {
+    protected CredentialsProperties getCredProperties(Context context, String credName) throws Exception {
         CredentialsProperties credProp = null;
         String workflowXml = ((WorkflowJobBean) context.getWorkflow()).getWorkflowInstance().getApp().getDefinition();
         Element elementJob = XmlUtils.parseXml(workflowXml);
         Element credentials = elementJob.getChild("credentials", elementJob.getNamespace());
         if (credentials != null) {
-            for (Element credential : (List<Element>) credentials.getChildren("credential", credentials
-                    .getNamespace())) {
+            for (Element credential : (List<Element>) credentials.getChildren("credential", credentials.getNamespace())) {
                 String name = credential.getAttributeValue("name");
                 String type = credential.getAttributeValue("type");
                 log.debug("getCredProperties: Name: " + name + ", Type: " + type);
@@ -749,7 +743,7 @@ public class JavaActionExecutor extends ActionExecutor {
 
     /**
      * Create job client object
-     *
+     * 
      * @param context
      * @param jobConf
      * @return
