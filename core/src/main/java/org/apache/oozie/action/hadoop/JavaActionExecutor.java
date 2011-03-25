@@ -70,6 +70,8 @@ public class JavaActionExecutor extends ActionExecutor {
     private static final String HADOOP_UGI = "hadoop.job.ugi";
     private static final String HADOOP_JOB_TRACKER = "mapred.job.tracker";
     private static final String HADOOP_NAME_NODE = "fs.default.name";
+    private static final String SUPPORTED_MULTICLUSTER = "oozie.supported.multicluster";
+    private static final String SUPPORTED_MULTICLUSTER_ON = "on";
 
     private static final Set<String> DISALLOWED_PROPERTIES = new HashSet<String>();
 
@@ -229,6 +231,7 @@ public class JavaActionExecutor extends ActionExecutor {
             if (e != null) {
                 String jobXml = e.getTextTrim();
                 Path path = new Path(appPath, jobXml);
+                log.debug("App Path: " + appPath.toString() + "Job XML: "+ jobXml + "Created Path: "+ path.toString());
                 FileSystem fs = getActionFileSystem(context, actionXml);
                 Configuration jobXmlConf = new XConfiguration(fs.open(path));
                 checkForDisallowedProps(jobXmlConf, "job-xml");
@@ -251,6 +254,7 @@ public class JavaActionExecutor extends ActionExecutor {
     Configuration addToCache(Configuration conf, Path appPath, String filePath, boolean archive)
             throws ActionExecutorException {
         Path path = null;
+        log.info("addToCache : AppPath: "+ appPath.toString() + " File Path: "+ filePath);
         try {
             if (filePath.startsWith("/")) {
                 path = new Path(filePath);
@@ -258,9 +262,12 @@ public class JavaActionExecutor extends ActionExecutor {
             else {
                 path = new Path(appPath, filePath);
             }
-            log.info("addToCache: path.toUri() :" + path.toUri().toString());
-            URI uri = new URI(path.toString());
+
+            //URI uri = new URI(path.toString());
+            URI uri = getUriforMultiCluster(path);
+            log.info("addToCache: URI recieved :" + uri.toString());
             if (archive) {
+                //URI uri1 = new URI(path.toUri().getPath());
                 DistributedCache.addCacheArchive(uri, conf);
             }
             else {
@@ -276,14 +283,14 @@ public class JavaActionExecutor extends ActionExecutor {
                 }
                 else if (fileName.endsWith(".jar")) { // .jar files
                     if (!fileName.contains("#")) {
-                        uri = new URI(uri.getPath()); // / have to be changed TODO mayank
                         path = new Path(uri.toString());
-
                         String user = conf.get("user.name");
                         String group = conf.get("group.name");
                         Services.get().get(HadoopAccessorService.class).addFileToClassPath(user, group, path, conf);
+                        log.info("addToCache: Adding jar to class path");
                     }
                     else {
+                        log.info("addToCache: Coming here for adding jar: "+ uri.toString());
                         DistributedCache.addCacheFile(uri, conf);
                     }
                 }
@@ -291,13 +298,16 @@ public class JavaActionExecutor extends ActionExecutor {
                     if (!fileName.contains("#")) {
                         // uri = new Path(path.toString() + "#" + fileName).toUri();
                         // uri = new URI(uri.getPath());
+                        path = new Path(uri.toString());
                         String pth = path.toString() + "#" + fileName;
                         uri = new URI(pth);
                     }
                 }
                 log.info("addToCache For File: URI: " + uri.toString());
+                log.info("addToCache: Adding file to Cache");
                 DistributedCache.addCacheFile(uri, conf);
             }
+            log.info("addToCache: Creating sym link");
             DistributedCache.createSymlink(conf);
             return conf;
         }
@@ -358,12 +368,18 @@ public class JavaActionExecutor extends ActionExecutor {
             throws ActionExecutorException {
         Configuration proto = context.getProtoActionConf();
 
+        log.info("setLibFilesArchives: Coming here 1 : Apppath: "+appPath.toString());
+        log.info("setLibFilesArchives: Coming here 1 : Action xml: "+XmlUtils.prettyPrint(actionXml));
         addToCache(conf, appPath, getOozieLauncherJar(context), false);
 
         String[] paths = proto.getStrings(WorkflowAppService.APP_LIB_PATH_LIST);
+
+        log.info("setLibFilesArchives: Coming here 1: Proto conf: "+ XmlUtils.prettyPrint(proto));
         if (paths != null) {
             for (String path : paths) {
                 addToCache(conf, appPath, path, false);
+                log.info("setLibFilesArchives: Coming here 2 : Apppath: "+appPath.toString());
+                log.info("setLibFilesArchives: Coming here 2 : path: "+path.toString());
             }
         }
 
@@ -371,11 +387,15 @@ public class JavaActionExecutor extends ActionExecutor {
             if (eProp.getName().equals("file")) {
                 String path = eProp.getTextTrim();
                 addToCache(conf, appPath, path, false);
+                log.info("setLibFilesArchives: Coming here 3 : Apppath: "+appPath.toString());
+                log.info("setLibFilesArchives: Coming here 3 : path: "+path.toString());
             }
             else {
                 if (eProp.getName().equals("archive")) {
                     String path = eProp.getTextTrim();
                     addToCache(conf, appPath, path, true);
+                    log.info("setLibFilesArchives: Coming here 4 : Apppath: "+appPath.toString());
+                    log.info("setLibFilesArchives: Coming here 4 : path: "+path.toString());
                 }
             }
         }
@@ -524,6 +544,7 @@ public class JavaActionExecutor extends ActionExecutor {
             injectLauncherCallback(context, launcherJobConf);
             XLog.getLog(getClass()).debug("Creating Job Client for action " + action.getId());
             jobClient = createJobClient(context, launcherJobConf);
+            log.info("submitLauncher: ACtion Dir: "+context.getActionDir().toString());
             String launcherId = LauncherMapper.getRecoveryId(launcherJobConf, context.getActionDir(), context
                     .getRecoveryId());
             boolean alreadyRunning = launcherId != null;
@@ -743,7 +764,7 @@ public class JavaActionExecutor extends ActionExecutor {
 
     /**
      * Create job client object
-     * 
+     *
      * @param context
      * @param jobConf
      * @return
@@ -937,6 +958,40 @@ public class JavaActionExecutor extends ActionExecutor {
     @Override
     public boolean isCompleted(String externalStatus) {
         return FINAL_STATUS.contains(externalStatus);
+    }
+
+    public static URI getUriforMultiCluster(Path path) throws Exception{
+        URI pathNew = null;
+        try{
+            Configuration conf = Services.get().getConf();
+            if (conf.get(SUPPORTED_MULTICLUSTER, "").trim().length() > 0) {
+                String supported = conf.getStrings(SUPPORTED_MULTICLUSTER)[0];
+                supported = Trim(supported);
+                XLog.getLog("JavaActionExecutor").info("Multi Cluster is: " + supported);
+                if(supported.equalsIgnoreCase(SUPPORTED_MULTICLUSTER_ON)){
+                    pathNew = new URI(path.toString());
+                }else{
+                    pathNew = new URI(path.toUri().getPath());
+                }
+            }
+        }catch(Exception e){
+            throw new Exception(e.getMessage());
+        }
+        return pathNew;
+    }
+
+    /**
+     * @param str
+     * @return
+     * @return
+     */
+    public static String Trim(String str) {
+        if (str != null) {
+            str = str.replaceAll("\\n", "");
+            str = str.replaceAll("\\t", "");
+            str = str.trim();
+        }
+        return str;
     }
 
 }

@@ -42,6 +42,7 @@ import org.apache.oozie.util.ELEvaluator;
 import org.apache.oozie.util.Instrumentation;
 import org.apache.oozie.util.XConfiguration;
 import org.apache.oozie.util.XLog;
+import org.apache.oozie.util.XmlUtils;
 import org.apache.oozie.workflow.WorkflowException;
 import org.apache.oozie.workflow.WorkflowInstance;
 import org.apache.oozie.workflow.lite.LiteWorkflowInstance;
@@ -192,10 +193,10 @@ public abstract class ActionCommand<T> extends WorkflowCommand<Void> {
     }
 
     public static class ActionExecutorContext implements ActionExecutor.Context {
-        private WorkflowJobBean workflow;
+        private final WorkflowJobBean workflow;
         private Configuration protoConf;
-        private WorkflowActionBean action;
-        private boolean isRetry;
+        private final WorkflowActionBean action;
+        private final boolean isRetry;
         private boolean started;
         private boolean ended;
         private boolean executed;
@@ -322,6 +323,8 @@ public abstract class ActionCommand<T> extends WorkflowCommand<Void> {
             XConfiguration jobConf = new XConfiguration(new StringReader(workflow.getConf()));
             Configuration fsConf = new Configuration();
             XConfiguration.copy(jobConf, fsConf);
+            XLog.getLog(getClass()).debug("getAppFileSystem : URI passed to file system :"+getWorkflow().getAppPath().toString());
+            XLog.getLog(getClass()).debug("getAppFileSystem : FSConfiguration"+XmlUtils.prettyPrint(fsConf));
             return Services.get().get(HadoopAccessorService.class).createFileSystem(workflow.getUser(),
                     workflow.getGroup(), new URI(getWorkflow().getAppPath()), fsConf);
 

@@ -27,6 +27,8 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.Permission;
 import java.text.MessageFormat;
 import java.util.Properties;
@@ -117,9 +119,10 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
         String jobId = null;
         Path recoveryFile = new Path(actionDir, recoveryId);
         //FileSystem fs = FileSystem.get(launcherConf);
+        XLog.getLog("org.apache.oozie.action.hadoop.LauncherMapper").info("getRecoveryId: RecoveryFIle"+ recoveryFile.toUri().toString());
         FileSystem fs = Services.get().get(HadoopAccessorService.class)
                 .createFileSystem(launcherConf.get("user.name"),
-                                  launcherConf.get("group.name"), launcherConf);
+                                  launcherConf.get("group.name"), recoveryFile.toUri(),launcherConf);
 
         if (fs.exists(recoveryFile)) {
             InputStream is = fs.open(recoveryFile);
@@ -168,9 +171,16 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
         launcherConf.set(OOZIE_ACTION_ID, actionId);
         launcherConf.set(OOZIE_ACTION_DIR_PATH, actionDir.toString());
         launcherConf.set(OOZIE_ACTION_RECOVERY_ID, recoveryId);
-
+        String strUri = actionDir + "/"+ACTION_CONF_XML;
+        URI uri;
+        try {
+            uri = new URI(strUri);
+        }
+        catch (URISyntaxException e) {
+            throw new IOException();
+        }
         FileSystem fs = Services.get().get(HadoopAccessorService.class).createFileSystem(launcherConf.get("user.name"),
-                launcherConf.get("group.name"), launcherConf);
+                launcherConf.get("group.name"),uri,launcherConf);
         fs.mkdirs(actionDir);
 
         OutputStream os = fs.create(new Path(actionDir, ACTION_CONF_XML));
@@ -604,7 +614,7 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
 class LauncherSecurityManager extends SecurityManager {
     private static boolean exitInvoked;
     private static int exitCode;
-    private SecurityManager securityManager;
+    private final SecurityManager securityManager;
 
     public LauncherSecurityManager() {
         reset();

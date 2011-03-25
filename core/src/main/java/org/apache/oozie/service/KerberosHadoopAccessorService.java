@@ -14,31 +14,28 @@
  */
 package org.apache.oozie.service;
 
-import org.apache.hadoop.mapred.JobClient;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.token.Token;
-import org.apache.hadoop.filecache.DistributedCache;
-import org.apache.hadoop.mapreduce.security.token.delegation.DelegationTokenIdentifier;
-import org.apache.hadoop.io.Text;
-import org.apache.oozie.util.XLog;
-import org.apache.oozie.util.XConfiguration;
-import org.apache.oozie.util.ParamChecker;
-import org.apache.oozie.ErrorCode;
-import org.apache.oozie.service.HadoopAccessorService;
-import org.apache.oozie.service.HadoopAccessorException;
-import org.apache.oozie.service.Service;
-import org.apache.oozie.service.ServiceException;
-
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.PrivilegedExceptionAction;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.filecache.DistributedCache;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapred.JobClient;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapreduce.security.token.delegation.DelegationTokenIdentifier;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.token.Token;
+import org.apache.oozie.ErrorCode;
+import org.apache.oozie.util.ParamChecker;
+import org.apache.oozie.util.XConfiguration;
+import org.apache.oozie.util.XLog;
+import org.apache.oozie.util.XmlUtils;
 
 /**
  * The HadoopAccessorService returns HadoopAccessor instances configured to work on behalf of a user-group. <p/> The
@@ -56,6 +53,7 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
 
     private ConcurrentMap<String, UserGroupInformation> userUgiMap;
 
+    @Override
     public void init(Configuration serviceConf) throws ServiceException {
         boolean kerberosAuthOn = serviceConf.getBoolean(KERBEROS_AUTH_ENABLED, true);
         XLog.getLog(getClass()).info("Oozie Kerberos Authentication [{0}]", (kerberosAuthOn) ? "enabled" : "disabled");
@@ -92,6 +90,7 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
         userUgiMap = new ConcurrentHashMap<String, UserGroupInformation>();
     }
 
+    @Override
     public void destroy() {
         userUgiMap = null;
         super.destroy();
@@ -114,6 +113,7 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
      * @return JobClient created with the provided user/group.
      * @throws HadoopAccessorException if the client could not be created.
      */
+    @Override
     public JobClient createJobClient(String user, String group, final JobConf conf) throws HadoopAccessorException {
         ParamChecker.notEmpty(user, "user");
         ParamChecker.notEmpty(group, "group");
@@ -144,6 +144,7 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
      * @return FileSystem created with the provided user/group.
      * @throws HadoopAccessorException if the filesystem could not be created.
      */
+    @Override
     public FileSystem createFileSystem(String user, String group, final Configuration conf)
             throws HadoopAccessorException {
         ParamChecker.notEmpty(user, "user");
@@ -178,6 +179,7 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
      * @return FileSystem created with the provided user/group.
      * @throws HadoopAccessorException if the filesystem could not be created.
      */
+    @Override
     public FileSystem createFileSystem(String user, String group, final URI uri, final Configuration conf)
             throws HadoopAccessorException {
         ParamChecker.notEmpty(user, "user");
@@ -202,6 +204,7 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
     }
 
 
+    @Override
     public void addFileToClassPath(String user, String group, final Path file, final Configuration conf)
             throws IOException {
         ParamChecker.notEmpty(user, "user");
@@ -213,9 +216,18 @@ public class KerberosHadoopAccessorService extends HadoopAccessorService {
                     Configuration defaultConf = new Configuration();
                     XConfiguration.copy(conf, defaultConf);
                     //Doing this NOP add first to have the FS created and cached
-                    DistributedCache.addFileToClassPath(file, defaultConf);
+                    XLog.getLog(getClass()).info("addFileToClassPath: Default Configuration: "+ XmlUtils.prettyPrint(defaultConf));
+                    XLog.getLog(getClass()).info("addFileToClassPath: "+file.toString());
+                    XLog.getLog(getClass()).info("Before: defaultconf: "+defaultConf.get("mapred.job.classpath.files"));
 
+                    XLog.getLog(getClass()).info("File System URI: "+ FileSystem.get(defaultConf).getUri());
+
+                    DistributedCache.addFileToClassPath(file, defaultConf);
+                    XLog.getLog(getClass()).info("After: defaultconf: "+defaultConf.get("mapred.job.classpath.files"));
+                    XLog.getLog(getClass()).info("addFileToClassPath: Configuration: "+ XmlUtils.prettyPrint(conf));
+                    XLog.getLog(getClass()).info("Before: conf: "+conf.get("mapred.job.classpath.files"));
                     DistributedCache.addFileToClassPath(file, conf);
+                    XLog.getLog(getClass()).info("Before: conf: "+conf.get("mapred.job.classpath.files"));
                     return null;
                 }
             });

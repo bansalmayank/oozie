@@ -1152,8 +1152,15 @@
         <name>oozie.filesystems.supported</name>
         <value>hdfs</value>
         <description>
-            Whitelisted job tracker for Oozie service.
+            Need to set what are the file systems are supported.
         </description>
     </property>
     
+    <property>
+        <name>oozie.supported.multicluster</name>
+        <value>off</value>
+        <description>
+            Need to set it to 'on' if Ozzie suppose to work for multi namenode environment.
+        </description>
+    </property>
 </configuration>

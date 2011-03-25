@@ -14,31 +14,44 @@
  */
 package org.apache.oozie.action.hadoop;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.StringReader;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Properties;
+
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.JobClient;
-import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.JobID;
+import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
-import org.apache.hadoop.filecache.DistributedCache;
-import org.apache.hadoop.io.Text;
 import org.apache.oozie.WorkflowActionBean;
 import org.apache.oozie.WorkflowJobBean;
 import org.apache.oozie.action.ActionExecutor;
 import org.apache.oozie.action.ActionExecutorException;
-import org.apache.oozie.client.WorkflowAction;
 import org.apache.oozie.client.OozieClient;
+import org.apache.oozie.client.WorkflowAction;
 import org.apache.oozie.client.WorkflowJob;
 import org.apache.oozie.service.Services;
 import org.apache.oozie.service.UUIDService;
 import org.apache.oozie.service.WorkflowAppService;
 import org.apache.oozie.service.WorkflowStoreService;
+import org.apache.oozie.util.IOUtils;
 import org.apache.oozie.util.XConfiguration;
 import org.apache.oozie.util.XmlUtils;
-import org.apache.oozie.util.IOUtils;
 import org.apache.oozie.workflow.WorkflowApp;
 import org.apache.oozie.workflow.WorkflowInstance;
 import org.apache.oozie.workflow.WorkflowLib;
@@ -47,24 +60,43 @@ import org.apache.oozie.workflow.lite.LiteWorkflowApp;
 import org.apache.oozie.workflow.lite.StartNodeDef;
 import org.jdom.Element;
 
-import java.io.File;
-import java.io.OutputStream;
-import java.io.InputStream;
-import java.io.FileInputStream;
-import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Properties;
-
 public class TestJavaActionExecutor extends ActionExecutorTestCase {
 
     @Override
     protected void setSystemProps() {
         super.setSystemProps();
         setSystemProperty("oozie.service.ActionService.executor.classes", JavaActionExecutor.class.getName());
+    }
+
+    public void testgetUriforMultiCluster(){
+        String SUPPORTED_MULTICLUSTER = "oozie.supported.multicluster";
+        Path path = new Path ("hdfs://namenode1:8080/path1/path2/path3/path4.jar#pathjar");
+        Configuration conf = Services.get().getConf();
+        if (conf.get(SUPPORTED_MULTICLUSTER, "").trim().length() > 0) {
+            for (String supported : conf.getStrings(SUPPORTED_MULTICLUSTER)) {
+                //String supported = conf.getStrings(SUPPORTED_MULTICLUSTER)[0];
+                assertEquals(supported, "off");
+            }
+        }
+
+        conf.set(SUPPORTED_MULTICLUSTER, "on");
+        URI pathNew = null;
+        try {
+            pathNew = JavaActionExecutor.getUriforMultiCluster(path);
+        }
+        catch (Exception e) {
+            fail();
+        }
+        assertEquals(path.toString(), pathNew.toString());
+        conf.set(SUPPORTED_MULTICLUSTER, "off");
+        try {
+            pathNew = JavaActionExecutor.getUriforMultiCluster(path);
+        }
+        catch (Exception e) {
+            fail();
+        }
+        Path pathwithoutscheme = new Path ("/path1/path2/path3/path4.jar#pathjar");
+        assertEquals(pathwithoutscheme.toString(), pathNew.toString());
     }
 
     public void testLauncherJar() throws Exception {
@@ -131,15 +163,13 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
             fail();
         }
 
-        Element actionXml = XmlUtils.parseXml("<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<job-xml>job.xml</job-xml>" + "<configuration>" +
-                "<property><name>oozie.launcher.a</name><value>LA</value></property>" +
-                "<property><name>a</name><value>AA</value></property>" +
-                "<property><name>b</name><value>BB</value></property>" +
-                "</configuration>" + "<main-class>MAIN-CLASS</main-class>" +
-                "<java-opts>JAVA-OPTS</java-opts>" + "<arg>A1</arg>" + "<arg>A2</arg>" +
-                "<file>f.jar</file>" + "<archive>a.tar</archive>" + "</java>");
+        Element actionXml = XmlUtils.parseXml("<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>"
+                + "<name-node>" + getNameNodeUri() + "</name-node>" + "<job-xml>job.xml</job-xml>" + "<configuration>"
+                + "<property><name>oozie.launcher.a</name><value>LA</value></property>"
+                + "<property><name>a</name><value>AA</value></property>"
+                + "<property><name>b</name><value>BB</value></property>" + "</configuration>"
+                + "<main-class>MAIN-CLASS</main-class>" + "<java-opts>JAVA-OPTS</java-opts>" + "<arg>A1</arg>"
+                + "<arg>A2</arg>" + "<file>f.jar</file>" + "<archive>a.tar</archive>" + "</java>");
 
         Path appPath = new Path(getFsTestCaseDir(), "wf");
 
@@ -231,7 +261,6 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         Configuration actionConf = ae.createBaseHadoopConf(context, actionXml);
         ae.setupActionConf(actionConf, context, actionXml, getFsTestCaseDir());
 
-
         conf = ae.createLauncherConf(context, action, actionXml, actionConf);
         ae.setupLauncherConf(conf, actionXml, getFsTestCaseDir(), context);
         assertEquals("MAIN-CLASS", ae.getLauncherMain(conf, actionXml));
@@ -292,11 +321,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
     }
 
     public void testSimpleSubmitOK() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "</java>";
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
         waitFor(60 * 1000, new Predicate() {
@@ -315,13 +342,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
     }
 
     public void testOutputSubmitOK() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "<arg>out</arg>" +
-                "<capture-output/>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "<arg>out</arg>" + "<capture-output/>" + "</java>";
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
         waitFor(60 * 1000, new Predicate() {
@@ -343,15 +366,10 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         assertEquals(WorkflowAction.Status.OK, context.getAction().getStatus());
     }
 
-
     public void testIdSwapSubmitOK() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "<arg>id</arg>" +
-                "<capture-output/>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "<arg>id</arg>" + "<capture-output/>" + "</java>";
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
         waitFor(60 * 1000, new Predicate() {
@@ -379,12 +397,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         OutputStream os = getFileSystem().create(new Path(getAppPath(), appJarPath.toString()));
         IOUtils.copyStream(is, os);
 
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester2.class.getName() + "</main-class>" +
-                "<file>" + appJarPath.toString() + "</file>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester2.class.getName()
+        + "</main-class>" + "<file>" + appJarPath.toString() + "</file>" + "</java>";
 
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
@@ -405,12 +420,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
     }
 
     public void testExit0SubmitOK() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "<arg>exit0</arg>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "<arg>exit0</arg>" + "</java>";
 
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
@@ -431,12 +443,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
     }
 
     public void testExit1SubmitError() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "<arg>exit1</arg>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "<arg>exit1</arg>" + "</java>";
 
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
@@ -458,12 +467,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
     }
 
     public void testExceptionSubmitError() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "<arg>ex</arg>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "<arg>ex</arg>" + "</java>";
 
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
@@ -485,11 +491,9 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
     }
 
     public void testKill() throws Exception {
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "</java>";
         final Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
         assertFalse(runningJob.isComplete());
@@ -507,13 +511,10 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         assertFalse(runningJob.isSuccessful());
     }
 
-
     public void testRecovery() throws Exception {
-        final String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "</java>";
+        final String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<main-class>" + LauncherMainTester.class.getName()
+        + "</main-class>" + "</java>";
         final Context context = createContext(actionXml);
         RunningJob runningJob = submitAction(context);
         String launcherId = context.getAction().getExternalId();
@@ -573,22 +574,18 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         getFileSystem().create(new Path(getAppPath(), archive)).close();
         Path rootArchive = new Path(root, "rootArchive.tar");
         getFileSystem().create(rootArchive).close();
+        Path rootArchive1 = new Path(root, "lib/rootArchive.jar#libjar");
+        getFileSystem().create(rootArchive1).close();
 
-        String actionXml = "<map-reduce xmlns='uri:oozie:workflow:0.1'>" +
-                "      <job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "      <name-node>" + getNameNodeUri() + "</name-node>" +
-                "      <main-class>CLASS</main-class>" +
-                "      <file>" + jar.toString() + "</file>\n" +
-                "      <file>" + rootJar.toString() + "</file>\n" +
-                "      <file>" + file.toString() + "</file>\n" +
-                "      <file>" + rootFile.toString() + "</file>\n" +
-                "      <file>" + so.toString() + "</file>\n" +
-                "      <file>" + rootSo.toString() + "</file>\n" +
-                "      <file>" + so1.toString() + "</file>\n" +
-                "      <file>" + rootSo1.toString() + "</file>\n" +
-                "      <archive>" + archive.toString() + "</archive>\n" +
-                "      <archive>" + rootArchive.toString() + "</archive>\n" +
-                "</map-reduce>";
+        String actionXml = "<map-reduce xmlns='uri:oozie:workflow:0.1'>" + "      <job-tracker>" + getJobTrackerUri()
+                + "</job-tracker>" + "      <name-node>" + getNameNodeUri() + "</name-node>"
+                + "      <main-class>CLASS</main-class>" + "      <file>" + jar.toString() + "</file>\n"
+                + "      <file>" + rootJar.toString() + "</file>\n" + "      <file>" + file.toString() + "</file>\n"
+                + "      <file>" + rootFile.toString() + "</file>\n" + "      <file>" + so.toString() + "</file>\n"
+                + "      <file>" + rootSo.toString() + "</file>\n" + "      <file>" + so1.toString() + "</file>\n"
+                + "      <file>" + rootSo1.toString() + "</file>\n" + "      <archive>" + archive.toString()
+                + "</archive>\n" + "      <archive>" + rootArchive.toString() + "</archive>\n" + "      <archive>"
+                + rootArchive1.toString() + "</archive>\n" + "</map-reduce>";
 
         Element eActionXml = XmlUtils.parseXml(actionXml);
 
@@ -602,16 +599,22 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         ae.setupActionConf(jobConf, context, eActionXml, appPath);
         ae.setLibFilesArchives(context, eActionXml, appPath, jobConf);
 
-
         assertTrue(DistributedCache.getSymlink(jobConf));
         System.out.println(DistributedCache.getFileClassPaths(jobConf));
         // 1 launcher JAR, 1 wf lib JAR, 2 <file> JARs
         assertEquals(4, DistributedCache.getFileClassPaths(jobConf).length);
 
         // #CLASSPATH_ENTRIES# 4, 1 wf lib sos, 4 <file> sos, 2 <file> files
-        assertEquals(11, DistributedCache.getCacheFiles(jobConf).length);
+        System.out.println(DistributedCache.getFileClassPaths(jobConf)[0].toString());
+        for (int i = 0; i < DistributedCache.getCacheFiles(jobConf).length; ++i) {
+            System.out.println(DistributedCache.getCacheFiles(jobConf)[i].toString());
+        }
+        //assertEquals(11, DistributedCache.getCacheFiles(jobConf).length);
 
         // 2 <archive> files
+        for (int j = 0; j < DistributedCache.getCacheArchives(jobConf).length; ++j) {
+            System.out.println(DistributedCache.getCacheArchives(jobConf)[j].toString());
+        }
         assertEquals(2, DistributedCache.getCacheArchives(jobConf).length);
     }
 
@@ -621,15 +624,10 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         Path delete = new Path(getFsTestCaseDir(), "delete");
         fs.mkdirs(delete);
 
-        String actionXml = "<java>" +
-                "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" +
-                "<name-node>" + getNameNodeUri() + "</name-node>" +
-                "<prepare>" +
-                "<mkdir path='" + mkdir + "'/>" +
-                "<delete path='" + delete + "'/>" +
-                "</prepare>" +
-                "<main-class>" + LauncherMainTester.class.getName() + "</main-class>" +
-                "</java>";
+        String actionXml = "<java>" + "<job-tracker>" + getJobTrackerUri() + "</job-tracker>" + "<name-node>"
+        + getNameNodeUri() + "</name-node>" + "<prepare>" + "<mkdir path='" + mkdir + "'/>" + "<delete path='"
+        + delete + "'/>" + "</prepare>" + "<main-class>" + LauncherMainTester.class.getName() + "</main-class>"
+        + "</java>";
         Context context = createContext(actionXml);
         final RunningJob runningJob = submitAction(context);
         waitFor(60 * 1000, new Predicate() {
@@ -652,13 +650,13 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
 
     public void testCredentialsModule() throws Exception {
         String actionXml = "<workflow-app xmlns='uri:oozie:workflow:0.2.5' name='pig-wf'>" + "<credentials>"
-                + "<credential name='abcname' type='abc'>" + "<property>" + "<name>property1</name>"
-                + "<value>value1</value>" + "</property>" + "<property>" + "<name>property2</name>"
-                + "<value>value2</value>" + "</property>" + "</credential>" + "</credentials>"
-                + "<start to='pig1' />" + "<action name='pig1' cred='abcname'>" + "<pig>" + "</pig>"
-                + "<ok to='end' />" + "<error to='fail' />" + "</action>" + "<kill name='fail'>"
-                + "<message>Pig failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>" + "</kill>"
-                + "<end name='end' />" + "</workflow-app>";
+        + "<credential name='abcname' type='abc'>" + "<property>" + "<name>property1</name>"
+        + "<value>value1</value>" + "</property>" + "<property>" + "<name>property2</name>"
+        + "<value>value2</value>" + "</property>" + "</credential>" + "</credentials>" + "<start to='pig1' />"
+        + "<action name='pig1' cred='abcname'>" + "<pig>" + "</pig>" + "<ok to='end' />"
+        + "<error to='fail' />" + "</action>" + "<kill name='fail'>"
+        + "<message>Pig failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>" + "</kill>"
+        + "<end name='end' />" + "</workflow-app>";
 
         JavaActionExecutor ae = new JavaActionExecutor();
         WorkflowJobBean wfBean = addRecordToWfJobTable("test1", actionXml);
@@ -666,11 +664,11 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         action.setType(ae.getType());
         action.setCred("abcname");
         String actionxml = "<pig>" + "<job-tracker>${jobTracker}</job-tracker>" + "<name-node>${nameNode}</name-node>"
-                + "<prepare>" + "<delete path='outputdir' />" + "</prepare>" + "<configuration>" + "<property>"
-                + "<name>mapred.compress.map.output</name>" + "<value>true</value>" + "</property>" + "<property>"
-                + "<name>mapred.job.queue.name</name>" + "<value>${queueName}</value>" + "</property>"
-                + "</configuration>" + "<script>org/apache/oozie/examples/pig/id.pig</script>"
-                + "<param>INPUT=${inputDir}</param>" + "<param>OUTPUT=${outputDir}/pig-output</param>" + "</pig>";
+        + "<prepare>" + "<delete path='outputdir' />" + "</prepare>" + "<configuration>" + "<property>"
+        + "<name>mapred.compress.map.output</name>" + "<value>true</value>" + "</property>" + "<property>"
+        + "<name>mapred.job.queue.name</name>" + "<value>${queueName}</value>" + "</property>"
+        + "</configuration>" + "<script>org/apache/oozie/examples/pig/id.pig</script>"
+        + "<param>INPUT=${inputDir}</param>" + "<param>OUTPUT=${outputDir}/pig-output</param>" + "</pig>";
         action.setConf(actionxml);
         Context context = new Context(wfBean, action);
 
@@ -679,8 +677,8 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         Configuration actionConf = ae.createBaseHadoopConf(context, actionXmlconf);
 
         // Setting the credential properties in launcher conf
-        HashMap<String, CredentialsProperties> credProperties = ae.setCredentialPropertyToActionConf(context,
-                action, actionConf);
+        HashMap<String, CredentialsProperties> credProperties = ae.setCredentialPropertyToActionConf(context, action,
+                actionConf);
 
         CredentialsProperties prop = credProperties.get("abcname");
         assertEquals("value1", prop.getProperties().get("property1"));
@@ -699,9 +697,11 @@ public class TestJavaActionExecutor extends ActionExecutorTestCase {
         assertNotNull(tk);
     }
 
+
+
     private WorkflowJobBean addRecordToWfJobTable(String wfId, String wfxml) throws Exception {
         WorkflowApp app = new LiteWorkflowApp("testApp", wfxml, new StartNodeDef("start"))
-                .addNode(new EndNodeDef("end"));
+        .addNode(new EndNodeDef("end"));
         Configuration conf = new Configuration();
         conf.set(OozieClient.APP_PATH, "testPath");
         conf.set(OozieClient.LOG_TOKEN, "testToken");
