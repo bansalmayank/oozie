@@ -1294,6 +1294,22 @@
         </description>
     </property>
 
+	<property>
+        <name>oozie.filesystems.supported</name>
+        <value>hdfs</value>
+        <description>
+            Need to set what are the file systems are supported.
+        </description>
+    </property>
+	
+	<property>
+ 	     <name>oozie.supported.multicluster</name>
+ 	     <value>off</value>
+ 	     <description>
+ 	         Need to set it to 'on' if Ozzie suppose to work for multi namenode environment.
+ 	     </description>
+ 	 </property>
+    
     <property>
         <name>oozie.service.WorkflowAppService.system.libpath</name>
         <value>/user/${user.name}/share/lib</value>

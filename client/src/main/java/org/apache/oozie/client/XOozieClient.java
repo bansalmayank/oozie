@@ -44,7 +44,7 @@ public class XOozieClient extends OozieClient {
     public static final String FILES = "oozie.files";
 
     public static final String ARCHIVES = "oozie.archives";
-    
+
     public static final String IS_PROXY_SUBMISSION = "oozie.proxysubmission";
 
     protected XOozieClient() {
@@ -108,11 +108,17 @@ public class XOozieClient extends OozieClient {
         if (libPath == null) {
             throw new RuntimeException("libpath is not specified in conf");
         }
-        if (!libPath.startsWith("hdfs://")) {
-            String newLibPath = NN + libPath;
-            conf.setProperty(LIBPATH, newLibPath);
+        if(!libPath.contains(":/")){
+            String newLibPath;
+            if (libPath.startsWith("/") && NN.endsWith("/")) {
+                newLibPath = NN + libPath.substring(1);
+            }
+            else {
+                newLibPath = NN + libPath;
+            }
+            conf.setProperty(XOozieClient.LIBPATH, newLibPath);
         }
-        
+
         conf.setProperty(IS_PROXY_SUBMISSION, "true");
     }
 

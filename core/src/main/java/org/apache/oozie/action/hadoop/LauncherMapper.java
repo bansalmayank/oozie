@@ -27,6 +27,8 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.Permission;
 import java.text.MessageFormat;
 import java.util.Properties;
@@ -74,9 +76,9 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
 
     private void setRecoveryId(Configuration launcherConf, Path actionDir, String recoveryId) throws LauncherException {
         try {
-            FileSystem fs = FileSystem.get(launcherConf);
             String jobId = launcherConf.get("mapred.job.id");
             Path path = new Path(actionDir, recoveryId);
+            FileSystem fs = FileSystem.get(path.toUri(), launcherConf);
             if (!fs.exists(path)) {
                 try {
                     Writer writer = new OutputStreamWriter(fs.create(path));
@@ -120,7 +122,7 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
         //FileSystem fs = FileSystem.get(launcherConf);
         FileSystem fs = Services.get().get(HadoopAccessorService.class)
                 .createFileSystem(launcherConf.get("user.name"),
-                                  launcherConf.get("group.name"), launcherConf);
+                                  launcherConf.get("group.name"), recoveryFile.toUri(),launcherConf);
 
         if (fs.exists(recoveryFile)) {
             InputStream is = fs.open(recoveryFile);
@@ -173,8 +175,17 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
         actionConf.set(OOZIE_JOB_ID, jobId);
         actionConf.set(OOZIE_ACTION_ID, actionId);
 
+        String strUri = actionDir + "/"+ACTION_CONF_XML;
+        URI uri;
+        try {
+            uri = new URI(strUri);
+        }
+        catch (URISyntaxException e) {
+            throw new IOException();
+        }
+
         FileSystem fs = Services.get().get(HadoopAccessorService.class).createFileSystem(launcherConf.get("user.name"),
-                launcherConf.get("group.name"), launcherConf);
+                launcherConf.get("group.name"), uri,launcherConf);
         fs.mkdirs(actionDir);
 
         OutputStream os = fs.create(new Path(actionDir, ACTION_CONF_XML));
@@ -392,7 +403,7 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
                     }
                     catch (InvocationTargetException ex) {
                         if (LauncherMainException.class.isInstance(ex.getCause())) {
-                            errorMessage = msgPrefix + "exit code [" +((LauncherMainException)ex.getCause()).getErrorCode() 
+                            errorMessage = msgPrefix + "exit code [" +((LauncherMainException)ex.getCause()).getErrorCode()
                                 + "]";
                             errorCause = null;
                         }
@@ -423,7 +434,9 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
                     if (errorMessage == null) {
                         File outputData = new File(System.getProperty("oozie.action.output.properties"));
                         if (outputData.exists()) {
-                            FileSystem fs = FileSystem.get(getJobConf());
+                            Path pathNew = new Path(new Path(outputData.toString()), new Path(actionDir,
+                                    ACTION_OUTPUT_PROPS));
+                            FileSystem fs = FileSystem.get(pathNew.toUri(),getJobConf());
                             fs.copyFromLocalFile(new Path(outputData.toString()), new Path(actionDir,
                                                                                            ACTION_OUTPUT_PROPS));
                             reporter.incrCounter(COUNTER_GROUP, COUNTER_OUTPUT_DATA, 1);
@@ -451,7 +464,8 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
                             if (props.getProperty("id") == null) {
                                 throw new IllegalStateException("ID swap file does not have [id] property");
                             }
-                            FileSystem fs = FileSystem.get(getJobConf());
+                            Path pathnew  = new Path(new Path(newId.toString()), new Path(actionDir, ACTION_NEW_ID_PROPS));
+                            FileSystem fs = FileSystem.get(pathnew.toUri(),getJobConf());
                             fs.copyFromLocalFile(new Path(newId.toString()), new Path(actionDir, ACTION_NEW_ID_PROPS));
                             reporter.incrCounter(COUNTER_GROUP, COUNTER_DO_ID_SWAP, 1);
 
@@ -506,7 +520,9 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
     }
 
     private void setupMainConfiguration() throws IOException {
-        FileSystem fs = FileSystem.get(getJobConf());
+        Path path = new Path(new Path(getJobConf().get(OOZIE_ACTION_DIR_PATH), ACTION_CONF_XML), new Path(new File(
+                ACTION_CONF_XML).getAbsolutePath()));
+        FileSystem fs = FileSystem.get(path.toUri(),getJobConf());
         fs.copyToLocalFile(new Path(getJobConf().get(OOZIE_ACTION_DIR_PATH), ACTION_CONF_XML), new Path(new File(
                 ACTION_CONF_XML).getAbsolutePath()));
 
@@ -564,7 +580,7 @@ public class LauncherMapper<K1, V1, K2, V2> implements Mapper<K1, V1, K2, V2>, R
                 pw.close();
                 errorProps.setProperty("exception.stacktrace", sw.toString());
             }
-            FileSystem fs = FileSystem.get(getJobConf());
+            FileSystem fs = FileSystem.get((new Path(actionDir, ACTION_ERROR_PROPS)).toUri(), getJobConf());
             OutputStream os = fs.create(new Path(actionDir, ACTION_ERROR_PROPS));
             errorProps.store(os, "");
             os.close();

@@ -14,19 +14,6 @@
  */
 package org.apache.oozie.service;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.PathFilter;
-import org.apache.oozie.client.OozieClient;
-import org.apache.oozie.workflow.WorkflowApp;
-import org.apache.oozie.workflow.WorkflowException;
-import org.apache.oozie.util.IOUtils;
-import org.apache.oozie.util.XConfiguration;
-import org.apache.oozie.util.XLog;
-import org.apache.oozie.ErrorCode;
-
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -36,6 +23,19 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
+import org.apache.oozie.ErrorCode;
+import org.apache.oozie.client.OozieClient;
+import org.apache.oozie.util.IOUtils;
+import org.apache.oozie.util.XConfiguration;
+import org.apache.oozie.util.XLog;
+import org.apache.oozie.workflow.WorkflowApp;
+import org.apache.oozie.workflow.WorkflowException;
 
 /**
  * Service that provides application workflow definition reading from the path and creation of the proto configuration.
@@ -150,7 +150,7 @@ public abstract class WorkflowAppService implements Service {
 
             FileSystem fs = Services.get().get(HadoopAccessorService.class).createFileSystem(user, group, uri, conf);
 
-            Path appPath = new Path(uri.getPath());
+            Path appPath = new Path(uri.toString());
             XLog.getLog(getClass()).debug("jobConf.libPath = " + jobConf.get(OozieClient.LIBPATH));
             XLog.getLog(getClass()).debug("jobConf.appPath = " + appPath);
 
@@ -161,7 +161,7 @@ public abstract class WorkflowAppService implements Service {
             else {
                 filePaths = new ArrayList<String>();
             }
-            
+
             if (jobConf.get(OozieClient.LIBPATH) != null) {
                 Path libPath = new Path(jobConf.get(OozieClient.LIBPATH));
                 List<String> libPaths = getLibFiles(fs, libPath);
@@ -232,7 +232,7 @@ public abstract class WorkflowAppService implements Service {
             FileStatus[] files = fs.listStatus(libPath, new NoPathFilter());
 
             for (FileStatus file : files) {
-                libPaths.add(file.getPath().toUri().getPath().trim());
+                libPaths.add((String) file.getPath().toUri().toString().trim());
             }
         }
         else {

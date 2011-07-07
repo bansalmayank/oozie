@@ -42,6 +42,8 @@ import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.security.token.Token;
+import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.util.DiskChecker;
 import org.apache.oozie.WorkflowJobBean;
 import org.apache.oozie.action.ActionExecutor;
@@ -61,8 +63,6 @@ import org.apache.oozie.util.XmlUtils;
 import org.jdom.Element;
 import org.jdom.JDOMException;
 import org.jdom.Namespace;
-import org.apache.hadoop.security.token.Token;
-import org.apache.hadoop.security.token.TokenIdentifier;
 
 public class JavaActionExecutor extends ActionExecutor {
 
@@ -70,6 +70,8 @@ public class JavaActionExecutor extends ActionExecutor {
     private static final String HADOOP_UGI = "hadoop.job.ugi";
     private static final String HADOOP_JOB_TRACKER = "mapred.job.tracker";
     private static final String HADOOP_NAME_NODE = "fs.default.name";
+    private static final String SUPPORTED_MULTICLUSTER = "oozie.supported.multicluster";
+    private static final String SUPPORTED_MULTICLUSTER_ON = "on";
 
     private static final Set<String> DISALLOWED_PROPERTIES = new HashSet<String>();
 
@@ -150,7 +152,8 @@ public class JavaActionExecutor extends ActionExecutor {
     }
 
     public Configuration createBaseHadoopConf(Context context, Element actionXml) {
-        Configuration conf = new XConfiguration();
+        Configuration conf = new Configuration();
+        //Configuration conf = new XConfiguration();
         conf.set(HADOOP_USER, context.getProtoActionConf().get(WorkflowAppService.HADOOP_USER));
         conf.set(HADOOP_UGI, context.getProtoActionConf().get(WorkflowAppService.HADOOP_UGI));
         if (context.getProtoActionConf().get(WorkflowAppService.HADOOP_JT_KERBEROS_NAME) != null) {
@@ -258,7 +261,8 @@ public class JavaActionExecutor extends ActionExecutor {
             else {
                 path = new Path(appPath, filePath);
             }
-            URI uri = new URI(path.toUri().getPath());
+            URI uri = getUriforMultiCluster(path);
+            log.info("addToCache: URI recieved :" + uri.toString());
             if (archive) {
                 DistributedCache.addCacheArchive(uri, conf);
             }
@@ -283,8 +287,9 @@ public class JavaActionExecutor extends ActionExecutor {
                 }
                 else { // regular files
                     if (!fileName.contains("#")) {
-                        uri = new Path(path.toString() + "#" + fileName).toUri();
-                        uri = new URI(uri.getPath());
+                        path = new Path(uri.toString());
+                        String pth = path.toString() + "#" + fileName;
+                        uri = new URI(pth);
                     }
                     DistributedCache.addCacheFile(uri, conf);
                 }
@@ -592,7 +597,7 @@ public class JavaActionExecutor extends ActionExecutor {
         }
         catch (ClassNotFoundException ex) {
             methodExists = false;
-        }        
+        }
         catch (NoSuchMethodException ex) {
             methodExists = false;
         }
@@ -956,4 +961,37 @@ public class JavaActionExecutor extends ActionExecutor {
         return FINAL_STATUS.contains(externalStatus);
     }
 
+    public static URI getUriforMultiCluster(Path path) throws Exception{
+        URI pathNew = null;
+        try{
+            Configuration conf = Services.get().getConf();
+            if (conf.get(SUPPORTED_MULTICLUSTER, "").trim().length() > 0) {
+                String supported = conf.getStrings(SUPPORTED_MULTICLUSTER)[0];
+                supported = Trim(supported);
+                XLog.getLog("JavaActionExecutor").info("Multi Cluster is: " + supported);
+                if(supported.equalsIgnoreCase(SUPPORTED_MULTICLUSTER_ON)){
+                    pathNew = new URI(path.toString());
+                }else{
+                    pathNew = new URI(path.toUri().getPath());
+                }
+            }
+        }catch(Exception e){
+            throw new Exception(e.getMessage());
+        }
+        return pathNew;
+    }
+
+    /**
+     * @param str
+     * @return
+     * @return
+     */
+    public static String Trim(String str) {
+        if (str != null) {
+            str = str.replaceAll("\\n", "");
+            str = str.replaceAll("\\t", "");
+            str = str.trim();
+        }
+        return str;
+    }
 }
